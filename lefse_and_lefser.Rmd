@@ -63,7 +63,7 @@ Perform the analysis with the `lefser` function:
 ```{r}
 lefser_output <- lefser(
     se, kruskal.threshold = 0.05, wilcox.threshold = 0.05,
-    groupCol = 'study_condition', blockCol = 'body_site', assay = 2L
+    groupCol = 'study_condition', blockCol = 'age_category', assay = 2L
 ) %>% 
     mutate(app_name = 'lefser') %>% 
     arrange(scores) %>% 
