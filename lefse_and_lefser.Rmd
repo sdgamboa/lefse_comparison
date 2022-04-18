@@ -14,7 +14,6 @@ library(lefser)
 library(SummarizedExperiment)
 library(dplyr)
 library(ggplot2)
-library(DT)
 library(devtools)
 library(tibble)
 library(tidyr)
@@ -221,7 +220,7 @@ joint_output <- purrr::reduce(
     .f = ~ inner_join(.x, .y, by = 'feature')
 ) %>% 
     select(feature, lefse_conda_LDA, lefse_galaxy_LDA, lefser_LDA)
-datatable(joint_output)
+joint_output
 ```
 
 ### lefser LDA scores vs lefse-conda LDA scores
