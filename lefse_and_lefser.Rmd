@@ -179,15 +179,10 @@ head(lefse_galaxy)
 
 ## Number of features reported as significant
 
-The number of features reported as significant is not the same for lefser as 
-for lefse-conda and lefse-galaxy.
-
 ```{r}
 combined_outputs <- bind_rows(lefse_conda, lefse_galaxy, lefser_output) %>% 
     mutate(LDA = coalesce(lefse_conda_LDA, lefse_galaxy_LDA, lefser_LDA))
-```
 
-```{r}
 combined_outputs %>% 
     count(app_name) %>% 
     ggplot(aes(app_name, n)) +
@@ -218,7 +213,7 @@ grid.draw(venn_object)
 
 ## LDA scores are similar
 
-LDA scores of the 24 overlapping features  are similar.
+LDA scores of the 24 overlapping features are similar.
 
 ```{r}
 joint_output <- purrr::reduce(
@@ -230,7 +225,6 @@ datatable(joint_output)
 ```
 
 ### lefser LDA scores vs lefse-conda LDA scores
-
 
 ```{r}
 joint_output %>% 
