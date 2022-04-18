@@ -1,0 +1,9 @@
+INFO [2022-04-18 13:32:08] $x
+INFO [2022-04-18 13:32:08] list(set1, set2, set3)
+INFO [2022-04-18 13:32:08] 
+INFO [2022-04-18 13:32:08] $category.names
+INFO [2022-04-18 13:32:08] c("lefse-conda", "lefse-galaxy", "lefser")
+INFO [2022-04-18 13:32:08] 
+INFO [2022-04-18 13:32:08] $filename
+INFO [2022-04-18 13:32:08] NULL
+INFO [2022-04-18 13:32:08] 

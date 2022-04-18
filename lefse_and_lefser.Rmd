@@ -1,0 +1,268 @@
+---
+title: "Comparing outputs from lefser, lefse-conda, and lefse-galaxy using the same dataset (zeller14)"
+output:
+    html_document: 
+        toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(lefser)
+library(SummarizedExperiment)
+library(dplyr)
+library(ggplot2)
+library(DT)
+library(devtools)
+library(tibble)
+library(tidyr)
+library(magrittr)
+library(readr)
+library(VennDiagram)
+library(purrr)
+```
+
+# Introduction
+
+In this document, I compare the output from lefse through different
+applications:
+
++ lefser (R package)
++ lefse-conda (command line)
++ lefse-galaxy (from the galaxy platfrom)
+
+In all cases, I use the same dataset, zerrer14, which is included in the
+zeller14 package.
+
+# Run lefse independently with the three applications (R, conda, galaxy)
+
+## Running lefse in R (lefser)
+
+Prepare data with TSS normalization. Lefse uses this same normalization step.
+
+```{r}
+data('zeller14')
+se <- zeller14[,zeller14$study_condition != 'adenoma']
+rownames(se) <- sub('^.+([a-z]__.+$)', '\\1', rownames(se))
+
+colData(se)[['study_condition']] <- factor(
+    colData(se)[['study_condition']], levels = c('control', 'CRC')
+)
+
+abundances <- assay(se)
+abundances_tss <- apply(abundances, 2, function(x) x / sum(x) * 1e6)
+assays(se)[[2]] <- abundances_tss
+names(assays(se))[2] <- "tss"
+se
+```
+
+Perform the analysis with the `lefser` function:
+
+```{r}
+lefser_output <- lefser(
+    se, kruskal.threshold = 0.05, wilcox.threshold = 0.05,
+    groupCol = 'study_condition', blockCol = 'body_site', assay = 2L
+) %>% 
+    mutate(app_name = 'lefser') %>% 
+    arrange(scores) %>% 
+    rename(feature = Names, lefser_LDA = scores)
+
+head(lefser_output)
+
+```
+
+## Running lefse-conda (command line) 
+
+### lefse-conda installation and version
+
+Note: I installed lefse following the instructions from [this site](https://github.com/biobakery/conda-biobakery)
+after installing conda.
+
+```{bash, eval=FALSE}
+## Add channels
+conda config --add channels defaults
+conda config --add channels bioconda
+conda config --add channels conda-forge
+conda config --add channels biobakery
+
+## Install lefse
+conda create -n lefse
+conda activate lefse
+conda install -c biobakery lefse
+```
+
+Conda and lefse versions:
+
+```{bash, eval=FALSE}
+conda --version
+#> conda 4.11.0
+
+conda list | grep -e "lefse"
+# packages in environment at /home/samuel/miniconda3/envs/lefse:
+#> lefse                     1.1.2              pyhdfd78af_0    bioconda
+
+```
+
+### Run lefse-conda
+
+1. Generate a tabular dataset (zeller14) compatible with lefse-conda and
+lefse-galaxy using the `get_dataset.R` script.
+
+2. Run the script `run_lefse.sh` (linux) with the following parameters:
+
+```{bash, eval=FALSE}
+## In general
+## ./run_lefse.sh <path/to/conda/activate> <env_name> <path/to/Rscript>
+
+## in my case (Samuel)
+./run_lefse.sh ~/miniconda3/bin/activate lefse ~/bin/Rscript
+```
+
+Note: All script files, `get_dataset.R` and `run_lefse.sh`, and this rmarkdown
+document must be in the same directory.
+
+### Import output from lefse-conda into R
+
+```{r}
+col_names <- c(
+    'feature', 'log_hi_class_avg', 'class', 'lefse_conda_LDA', 'pval'
+)
+lefse_conda <- readr::read_tsv(
+    'zeller14.res', show_col_types = FALSE, col_names = FALSE 
+) %>% 
+    set_colnames(col_names) %>% 
+    filter(!is.na(lefse_conda_LDA)) %>%
+    mutate(
+        lefse_conda_LDA = ifelse(
+            class == 'control', -lefse_conda_LDA, lefse_conda_LDA
+        ),
+        app_name = 'lefse_conda'
+    ) %>% 
+    arrange(lefse_conda_LDA)
+    
+head(lefse_conda)
+```
+
+## Running lefse from galaxy
+
+I used the `zeller14_nosub.txt` file (no subjects included) as input for
+lefse from the galaxy platform of the Huttenhower lab at 
+https://huttenhower.sph.harvard.edu/galaxy/
+
+alpha were 0.05 for both KW and Wilcox, 2.0 for LDA. TSS normalization was
+applied as well.
+
+I'll just import the output:
+
+```{r}
+col_names <- c(
+    'feature', 'log_hi_class_avg', 'class', 'lefse_galaxy_LDA', 'pval'
+)
+lefse_galaxy <- read_tsv(
+    "lefse_gal_all_vs_all.res", col_names = FALSE, show_col_types = FALSE
+) %>% 
+    set_colnames(col_names) %>% 
+    filter(!is.na(lefse_galaxy_LDA)) %>% 
+    mutate(
+        lefse_galaxy_LDA = ifelse(
+            class == "control", -lefse_galaxy_LDA, lefse_galaxy_LDA
+        ),
+        app_name = 'lefse_galaxy'
+    )
+
+head(lefse_galaxy)
+```
+
+# Comparison of lefse-conda with lefser
+
+## Number of features reported as significant
+
+The number of features reported as significant is not the same for lefser as 
+for lefse-conda and lefse-galaxy.
+
+```{r}
+combined_outputs <- bind_rows(lefse_conda, lefse_galaxy, lefser_output) %>% 
+    mutate(LDA = coalesce(lefse_conda_LDA, lefse_galaxy_LDA, lefser_LDA))
+```
+
+```{r}
+combined_outputs %>% 
+    count(app_name) %>% 
+    ggplot(aes(app_name, n)) +
+    geom_col() +
+    geom_label(aes(label = n)) +
+    ggtitle(
+        'Number of significiant features identified by the different applications using lefse'
+    )
+```
+
+
+## Overlap of features reported as significant
+
+```{r}
+set1 = lefse_conda$feature
+set2 = lefse_galaxy$feature
+set3 = lefser_output$feature
+
+grid.newpage()
+venn_object <- venn.diagram(
+    x = list(set1, set2, set3),
+    category.names = c("lefse-conda" , "lefse-galaxy" , "lefser"),
+    filename = NULL
+)
+grid.draw(venn_object)
+
+```
+
+## LDA scores are similar
+
+LDA scores of the 24 overlapping features  are similar.
+
+```{r}
+joint_output <- purrr::reduce(
+    .x = list(lefse_conda, lefse_galaxy, lefser_output),
+    .f = ~ inner_join(.x, .y, by = 'feature')
+) %>% 
+    select(feature, lefse_conda_LDA, lefse_galaxy_LDA, lefser_LDA)
+datatable(joint_output)
+```
+
+### lefser LDA scores vs lefse-conda LDA scores
+
+
+```{r}
+joint_output %>% 
+    ggplot(aes(lefse_conda_LDA, lefser_LDA)) + 
+    geom_point(size = 3, shape = 1) +
+    geom_hline(yintercept = 0, linetype = 'dashed') +
+    geom_vline(xintercept = 0, linetype = 'dashed') +
+    ggtitle(
+    'Comparison of LDA scores of features reported as significant 
+    by both lefse-conda and lefser'
+    )
+```
+
+
+### lefser LDA scores vs lefse-galaxy LDA scores
+
+```{r}
+joint_output %>% 
+    ggplot(aes(lefse_galaxy_LDA, lefser_LDA)) + 
+    geom_point(size = 3, shape = 1) +
+    geom_hline(yintercept = 0, linetype = 'dashed') +
+    geom_vline(xintercept = 0, linetype = 'dashed') +
+    ggtitle(
+    'Comparison of LDA scores of features reported as significant 
+    by both lefse-galaxy and lefser'
+    )
+```
+
+
+# Session info
+
+```{r}
+session_info()
+```
+
